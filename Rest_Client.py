@@ -17,6 +17,8 @@ def sign(key, msg):
     驗證使用者的身份及請求服務的時效性。
 """
 
+# 2018/5/1  最接近的： https://github.com/peter-evans/kong-hmac-python/blob/master/kong_hmac.py
+
 
 url = "http://ptx.transportdata.tw/MOTC/v2/Bus/RealTimeByFrequency/City/Taipei?$format=JSON"
 id = "b30cc9bf581d48e6bf2cf9cc10d0aa19"
@@ -32,7 +34,7 @@ if __name__ == '__main__':
         'hmac username': id,
         'algorithm': "hmac-sha1",
         "headers": "x-date",
-        'signature': sign_hmac
+        'signature': str(sign_hmac)[2:-1]
     }
 
 
