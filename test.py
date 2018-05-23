@@ -57,5 +57,10 @@ request_headers = {
 print(request_headers)
 
 r = requests.get(url, headers=request_headers)
-print ('Response code: %d\n' % r.status_code)
-print (r.text)
+print('Response code: %d\n' % r.status_code)
+print(r.text)
+
+
+# Step 1. Query all the bus line.
+
+# Step 2. Download All the
