@@ -1,66 +1,81 @@
-import requests
-import base64
-import hashlib
-import hmac
-from datetime import datetime, time
+import hmac, hashlib, base64, requests
+from datetime import datetime
 from time import mktime
 from wsgiref.handlers import format_date_time
-import calendar
 
+import xml.etree.ElementTree as ET
+import pandas as pd
 
-def create_date_header():
-    now = datetime.now()
-    stamp = mktime(now.timetuple())
-    return format_date_time(stamp)
-
-"""
-def create_date_header():
-    # EXAMPLE x-date: Mon, 07 May 2018 13:07:30 GMT
-    msg = "x-date: " + datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-    return msg
-"""
-
-def create_auth_header(key_id, sign_hmac):
-    # EXAMPLE: Authorization: hmac username="37ea2500589b4bfba83109e994fd4828", algorithm="hmac-sha1", headers="x-date", signature="Ad4SEp0OoFf2c594ew71bqNhIWI="
-
-    # Set the authorization header template
-    auth_header_template = 'hmac username="{}", algorithm="{}", headers="{}", signature="{}"'
-    # Set the signature hash algorithm
-    algorithm = 'hmac-sha1'
-    headers = "x-date"
-
-    auth_header = auth_header_template.format(key_id, algorithm, headers, sign_hmac.decode("utf-8"))
-    return auth_header
-
-
-def sha1_hash_base64(string_to_hash, secret):
-    h = hmac.new(secret, (string_to_hash).encode('utf-8'), hashlib.sha1)
-    return base64.b64encode(h.digest())
-
-
-url = "http://ptx.transportdata.tw/MOTC/v2/Bus/RealTimeByFrequency/City/Taipei?$format=JSON"
-key_id = "37ea2500589b4bfba83109e994fd4828"
+key_id = "37ea25005" \
+         "89b4bfba83109e994fd4828"
 secret = b"wBj14ITh9YcoRY4oJlyiSwshfQQ"
 
-msg = create_date_header()
-sign_hmac = sha1_hash_base64("x-date: "+ msg, secret)
-auth_header = create_auth_header(key_id, sign_hmac)
-date_header = create_date_header()
-print(auth_header)
-print(date_header)
+
+class header_generator():
+
+    def create_date_header(self):
+        now = datetime.now()
+        stamp = mktime(now.timetuple())
+        return format_date_time(stamp)
+
+    def create_auth_header(self, key_id, sign_hmac):
+        # Set the authorization header template
+        auth_header_template = 'hmac username="{}", algorithm="{}", headers="{}", signature="{}"'
+        # Set the signature hash algorithm
+        algorithm = 'hmac-sha1'
+        headers = "x-date"
+        auth_header = auth_header_template.format(key_id, algorithm, headers, sign_hmac.decode("utf-8"))
+        return auth_header
+
+    def sha1_hash_base64(self, string_to_hash, secret):
+        h = hmac.new(secret, (string_to_hash).encode('utf-8'), hashlib.sha1)
+        return base64.b64encode(h.digest())
+
+
+class xml2DataFrame():
+    def __init__(self, xml_data):
+        self.root = ET.XML(xml_data)
+
+    def parse_root(self):
+        return [self.parse_element(child) for child in iter(self.root)]
+
+    def parse_element(self, element, parsed=None):
+        if parsed is None:
+            parsed = dict()
+        for key in element.keys():
+            parsed[key] = element.attrib.get(key)
+
+        if element.text:
+            parsed[element.tag] = element.text
+
+        for child in list(element):
+            self.parse_element(child, parsed)
+        return parsed
+
+    def process_data(self):
+        structure_data = self.parse_root(self.root)
+        return pd.DataFrame(structure_data)
+
+# Laterly Need a URI generator
+request_uri = "http://ptx.transportdata.tw/MOTC/v2/Bus/Route/City/Taipei?$top=10&$format=XML"
+
+header_gen = header_generator()
+msg = header_gen.create_date_header()
+sign_hmac = header_gen.sha1_hash_base64("x-date: "+ msg, secret)
+auth_header = header_gen.create_auth_header(key_id, sign_hmac)
+date_header = header_gen.create_date_header()
 
 request_headers = {
             'Authorization': auth_header,
             'x-date': date_header
             }
 
-print(request_headers)
+xml_data = requests.get(request_uri, headers=request_headers)
+print('Response code: %d\n' % xml_data.status_code)
+print(xml_data.text)
 
-r = requests.get(url, headers=request_headers)
-print('Response code: %d\n' % r.status_code)
-print(r.text)
-
-
-# Step 1. Query all the bus line.
+xml2df = xml2DataFrame(xml_data.content)
+xml_dataframe = xml2df.process_data()
+# Step 1. Query all the bus line from XML and save it into a sqlite DB.
 
 # Step 2. Download All the
