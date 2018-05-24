@@ -1,13 +1,17 @@
-import hmac, hashlib, base64, requests
+import hmac
+import hashlib
+import base64
+import requests
 from datetime import datetime
 from time import mktime
 from wsgiref.handlers import format_date_time
 
 import xml.etree.ElementTree as ET
 import pandas as pd
+import sqlite3
+from sqlalchemy import create_engine
 
-key_id = "37ea25005" \
-         "89b4bfba83109e994fd4828"
+key_id = "37ea2500589b4bfba83109e994fd4828"
 secret = b"wBj14ITh9YcoRY4oJlyiSwshfQQ"
 
 
@@ -53,15 +57,34 @@ class xml2DataFrame():
         return parsed
 
     def process_data(self):
-        structure_data = self.parse_root(self.root)
+        structure_data = self.parse_root()
         return pd.DataFrame(structure_data)
 
+def df2sqlite(dataframe, db_name, tbl_name):
+# Reference:http://yznotes.com/write-pandas-dataframe-to-sqlite/
+    conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
+
+    wildcards = ','.join(['?'] * len(dataframe.columns))
+    data = [tuple(x) for x in dataframe.values]
+
+    cur.execute("drop table if exists %s" % tbl_name)
+
+    col_str = '"' + '","'.join(dataframe.columns) + '"'
+    cur.execute("create table %s (%s)" % (tbl_name, col_str))
+
+    cur.executemany("insert into %s values(%s)" % (tbl_name, wildcards), data)
+
+    conn.commit()
+    conn.close()
+
+
 # Laterly Need a URI generator
-request_uri = "http://ptx.transportdata.tw/MOTC/v2/Bus/Route/City/Taipei?$top=10&$format=XML"
+request_uri = "http://ptx.transportdata.tw/MOTC/v2/Bus/Route/City/Taipei?$format=XML"
 
 header_gen = header_generator()
 msg = header_gen.create_date_header()
-sign_hmac = header_gen.sha1_hash_base64("x-date: "+ msg, secret)
+sign_hmac = header_gen.sha1_hash_base64("x-date: " + msg, secret)
 auth_header = header_gen.create_auth_header(key_id, sign_hmac)
 date_header = header_gen.create_date_header()
 
@@ -72,10 +95,10 @@ request_headers = {
 
 xml_data = requests.get(request_uri, headers=request_headers)
 print('Response code: %d\n' % xml_data.status_code)
-print(xml_data.text)
 
+# Step 1. Query all the bus line from XML and save it into a sqlite DB.
 xml2df = xml2DataFrame(xml_data.content)
 xml_dataframe = xml2df.process_data()
-# Step 1. Query all the bus line from XML and save it into a sqlite DB.
-
+df2sqlite(xml_dataframe, "bus_routes.sqlite", "Taipei")
+xml_dataframe.to_csv("routes.csv", sep='\t', encoding='utf-8')
 # Step 2. Download All the
